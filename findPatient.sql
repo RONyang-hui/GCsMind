@@ -36,7 +36,7 @@ LIMIT 10;
 3. 年龄大于18且小于100的患者 (n = 4112)
 
 
-
+01.sepsis_patients
 --确诊为sepsis的患者
 --查询18-60岁之间的患者
 --查询患者的首次入ICU记录
@@ -47,13 +47,25 @@ JOIN mimiciv_derived.icustay_detail AS icu USING (subject_id, stay_id)
 WHERE icu.admission_age >= 18 AND icu.admission_age <= 80
     AND icu.first_icu_stay = TRUE;
 
+在此基础上，将这个查询的视图与mimiciv_derived.vasopressin表格进行对比（using stay_id），
+    新建视图（VIEW）sepsis_patients_vaso表格，并新添加一列用来存储vasopressin的使用情况，如果使用过填1，否则为0
 
-SELECT sp.*, dia.icd_code
+
+
+02.sepsis_patients
+---在此基础上，将这个查询的表格与mimiciv_derived.vasopressin表格进行对比（using stay_id），
+---在sepsis_patients表格中新添加一列用来存储vasopressin的使用情况，如果使用过填1，否则为0
+CREATE VIEW sepsis_patients_vaso AS
+SELECT DISTINCT ON (sp.subject_id) sp.*, CASE 
+    WHEN v.stay_id IS NOT NULL THEN 1 
+    ELSE 0 
+END AS vasopressin_usage
 FROM sepsis_patients AS sp
-JOIN mimiciv_hosp.diagnoses_icd AS dia USING (hadm_id)
-WHERE dia.icd_code IN ('7100', '7140', '7200');
+LEFT JOIN mimiciv_derived.vasopressin AS v USING (stay_id);
 
-在此基础上和 mimiciv_hosp.diagnoses_icd 表与sepsis_patients对比（using stay_id）,查询icd_code in ('7100','7140','7200')
+
+02.1 sepsis_patients的疾病的分布情况
+---在此基础上和 mimiciv_hosp.diagnoses_icd 表与sepsis_patients对比（using stay_id）,查询icd_code in ('7100','7140','7200')
 
 -- 4.1.从汇总表icd_cod查询icd_code '5715','5712'
 SELECT d_icd_diagnoses.icd_code, d_icd_diagnoses.icd_version, d_icd_diagnoses.long_title, COUNT(diagnoses_icd.icd_code) AS code_count
@@ -68,7 +80,8 @@ WHERE d_icd_diagnoses.icd_code ILIKE '%7100%'
 GROUP BY d_icd_diagnoses.icd_code, d_icd_diagnoses.icd_version, d_icd_diagnoses.long_title
 -- 按诊断总数倒序排序
 ORDER BY code_count DESC;
-		
+
+02.2 sepsis_patients的疾病的分布情况：long_title ILIKE '%Ankylosing spondylitis%'	
 -- 4.2.从汇总表long_title查询'%Cirrhosis of liver%'
 SELECT d_icd_diagnoses.icd_code, d_icd_diagnoses.icd_version, d_icd_diagnoses.long_title, COUNT(diagnoses_icd.icd_code) AS code_count
 -- 从d_icd_diagnoses_count表中选择icd_code, icd_version, long_title以及满足条件的诊断总数
@@ -82,27 +95,7 @@ WHERE d_icd_diagnoses.long_title ILIKE '%Ankylosing spondylitis%'
 GROUP BY d_icd_diagnoses.icd_code, d_icd_diagnoses.icd_version, d_icd_diagnoses.long_title
 -- 按诊断总数倒序排序
 ORDER BY code_count DESC;
-
--- 5.汇总所有的查询结果
--- 从汇总表查询免疫类的icd_code '7100', '7140', '7200'
-SELECT DISTINCT (ICUD.hadm_id) AS HADM_ID
-FROM mimiciv_derived.age as age,
-     mimiciv_derived.icustay_detail as ICUD,
-     mimiciv_hosp.diagnoses_icd as dia
-     where dia.hadm_id = age.hadm_id and age.hadm_id = icud.hadm_id
-     -- 查询患有心肌梗死的患者
-     and dia.icd_code in ('7100', '7140', '7200')
-     -- 查询患有肝脏疾病的的患者
-     and dia.icd_code not in ('5717','5712')
-    -- 筛查年龄患者
-     and age.age >= 18 AND age.age <= 60
-    -- 只获取患者的首次入院记录
-    and icud.first_icu_stay = True
-
-
-
-
-
+02.3 结果：
 '7100', Systemic lupus erythematosus
 'M329', Systemic lupus erythematosus, unspecified
 '7200', Ankylosing spondylitis
@@ -125,10 +118,31 @@ FROM mimiciv_derived.age as age,
 '57142','K754', Autoimmune hepatitis（自身免疫性肝炎）
 'E063', Autoimmune thyroiditis
 
+'V08', '042','Z21','B20'  Asymptomatic human immunodeficiency virus [HIV] infection status
+'20280',
+'Z8572'Personal history of non-Hodgkin lymphomas
+'C8339', Diffuse large B-cell lymphoma, extranodal and solid organ sites
+'C8338' Diffuse large B-cell lymphoma, lymph nodes of multiple sites
+'Z8571', Personal history of Hodgkin lymphoma
 
 
+E8780  	9	Surgical operation with transplant of whole organ causing abnormal patient reaction, or later complication, without mention of misadventure at time of operation
+V420   	9	Kidney replaced by transplant
+99681  	9	Complications of transplanted kidney
+Z940   	10	Kidney transplant status
+V422   	9	Heart valve replaced by transplant
+V4983  	9	Awaiting organ transplant status
+V427   	9	Liver replaced by transplant
+Y830   	10	Surgical operation with transplant of whole organ as the cause of abnormal reaction of the patient, or of later complication, without mention of misadventure at the time of the procedure
+Z944   	10	Liver transplant status
+Z7682  	10	Awaiting organ transplant status
+V4282  	9	Peripheral stem cells replaced by transplant
+Z9484  	10	Stem cells transplant status
+99682  	9	Complications of transplanted liver
+V4283  	9	Pancreas replaced by transplant 
 
----选择有免疫疾病的患者保存为immunpatients
+03.filtered_immunpatients
+---选择有免疫疾病的患者保存为immunpatients,这一步非常重要！！！需要找到所有的免疫疾病的icd_code
 CREATE MATERIALIZED VIEW immunpatients AS
 WITH filtered_patients AS (
     SELECT DISTINCT ICUD.hadm_id AS sp_hadm_id, d_icd_diagnoses.long_title
@@ -138,7 +152,7 @@ WITH filtered_patients AS (
          mimiciv_hosp.d_icd_diagnoses AS d_icd_diagnoses
     WHERE dia.hadm_id = age.hadm_id 
       AND age.hadm_id = icud.hadm_id
-      AND dia.icd_code IN ('7100', 'M329', '7140', '7200', 'M459', '340', 'G35', '5569', '5568', 'K5190', 'G7000', '35800', '57142', 'E063', '7102', 'M3500', '6960', '4460', 'K754')
+      AND dia.icd_code IN ('7100', 'M329', '7140', '7200', 'M459', 'V08', '042', 'Z21', 'B20', '20280', 'Z8572', 'C8339', 'C8338', 'Z8571', 'E8780', 'V420', '99681', 'Z940', 'V422', 'V4983', 'V427', 'Y830', 'Z944', 'Z7682', 'V4282', 'Z9484', '99682', 'V4283')
       AND dia.icd_code NOT IN ('5717', '5712')
       AND age.age >= 18 AND age.age <= 60
       AND icud.first_icu_stay = TRUE
@@ -146,11 +160,14 @@ WITH filtered_patients AS (
 )
 SELECT fp.sp_hadm_id, fp.long_title, sp.*
 FROM filtered_patients fp
-RIGHT JOIN mimiciv_derived.sepsis_patients sp ON fp.sp_hadm_id = sp.hadm_id;
+RIGHT JOIN mimiciv_derived.sepsis_patients_vaso sp ON fp.sp_hadm_id = sp.hadm_id;
 
-
+04.immudrug_data
+---这里通过重新命名解决了无法保存为表格的问题！！！
+ SELECT d.subject_id AS se_subject_id, d.hadm_id AS se_hadm_id, d.drug_IV, im.*,
 ---选择有免疫疾病的患者immunpatients，且注射了皮质醇激素的
 ---计算生存时间
+CREATE VIEW sepsis_GCs AS
 WITH drug_data AS (
     SELECT p.subject_id, p.hadm_id,
            MAX(CASE WHEN p.drug LIKE '%Dexamethasone%' OR p.drug LIKE '%Hydrocortisone%' OR p.drug LIKE '%Methylprednisolone%' THEN 1 ELSE 0 END) AS drug_IV
@@ -160,6 +177,7 @@ WITH drug_data AS (
 ),
 patient_data AS (
     SELECT d.subject_id, d.hadm_id, d.drug_IV, im.*,
+    SELECT d.subject_id AS se_subject_id, d.hadm_id AS se_hadm_id, d.drug_IV, im.*,
            CASE WHEN im.dod IS NOT NULL THEN 1 ELSE 0 END AS death,
            CASE
                WHEN im.dod IS NOT NULL AND (im.dod - im.icu_outtime) <= INTERVAL '28 days' THEN 1
@@ -172,10 +190,18 @@ patient_data AS (
 )
 SELECT *
 FROM patient_data;
+
+
+
+
 ---在脓毒症患者中
 --确诊为sepsis的患者
 --查询18-60岁之间的患者
 --查询患者的首次入ICU记录
 --注射了皮质醇激素的
 --(im.dod - im.icu_outtime) <= INTERVAL '28 days' 
+
+
+
+
 
