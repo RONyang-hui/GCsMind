@@ -81,7 +81,7 @@ nonormalVar<-c('age','gender','weight','saps','sofa','elix_score','vs_map_first'
         'lab_sodium_first','lab_potassium_first','lab_bicarbonate_first','lab_bun_first','lab_lactate_first',
         'lab_creatinine_first','lab_ph_first','lab_po2_first','lab_pco2_first')
 #制作Table1
-tab1<-CreateTableOne(vars=vars,strata = "echo",data=finaldata,factorVars = catVar)
+tab1<-CreateTableOne(vars=vars,strata = "echo",data=data,factorVars = catVar)
 print(tab1,smd = TRUE,varLabels = TRUE,showAllLevels = TRUE,test = FALSE)
 
 
@@ -131,10 +131,11 @@ table1 <- CreateTableOne(vars = vars,
 )
 
 # 打印Table 1结果，并设置smd、varLabels、showAllLevels和test参数
-print(table1, smd = TRUE, varLabels = TRUE, showAllLevels = TRUE, test = FALSE)
+print(tab1, smd = TRUE, varLabels = TRUE, showAllLevels = TRUE, test = FALSE)
+
 
 # 提取Table 1结果并保存为CSV文件
-table1_output <- print(table1, nonnormal = c(), showAllLevels = TRUE)
+table1_output <- print(tab1,smd = TRUE, nonnormal = c(), showAllLevels = TRUE) , printToggle = FALSE
 write.table(table1_output, file = "C:/Users/yanghui/Desktop/table1.csv", sep = ",", col.names = TRUE, quote = FALSE)
 
 
